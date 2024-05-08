@@ -641,7 +641,7 @@ def terabox(url):
                         details['title'] = content['server_filename']
                     folderPath = details['title']
                 item = {
-                    'url': content['dlink'],
+                    'url': replace_terabox_link(content['dlink']),
                     'filename': content['server_filename'],
                     'path' : path.join(folderPath),
                 }
