@@ -23,6 +23,9 @@ from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.ext_utils.help_messages import PASSWORD_ERROR_MESSAGE
 
 _caches = {}
+user_agent = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36"
+)
 
 fmed_list = ['fembed.net', 'fembed.com', 'femax20.com', 'fcdn.stream', 'feurl.com', 'layarkacaxxi.icu',
              'naniplay.nanime.in', 'naniplay.nanime.biz', 'naniplay.com', 'mm9842.com']
@@ -576,30 +579,68 @@ def uploadee(url):
         try:
             html = HTML(session.get(url).text)
         except Exception as e:
-            raise DirectDownloadLinkException(f'ERROR: {e.__class__.__name__}') from e
+            raise DirectDownloadLinkException(f'ERROR: {e.__class__.__name__}')
     if link := html.xpath("//a[@id='d_l']/@href"):
         return link[0]
     else:
         raise DirectDownloadLinkException("ERROR: Direct Link not found")
 
-def replace_terabox_link(original_url):
-    # Replace the domain and path in the original URL
-    new_url = original_url.replace("https://d.1024tera.com/", "https://d8.freeterabox.com/")
-    return new_url
 
-def terabox(url):
-    if not path.isfile('terabox.txt'):
-        raise DirectDownloadLinkException("ERROR: terabox.txt not found")
-    try:
-        jar = MozillaCookieJar('terabox.txt')
-        jar.load()
-    except Exception as e:
-        raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}") from e
-    cookies = {}
-    for cookie in jar:
-        cookies[cookie.name] = cookie.value
-    details = {'contents':[], 'title': '', 'total_size': 0}
-    details["header"] = ' '.join(f'{key}: {value}' for key, value in cookies.items())
+class DirectDownloadLinkException(Exception):
+    pass
+
+async def get_formatted_size(size):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} PB"
+
+def replace_terabox_link(dlink):
+    return re.sub(r'd\.(freeterabox\.com|terabox\.app)', 'd8.freeterabox.com', dlink)
+    
+def terabox(url, folderPath=None, details=None):
+    if details is None:
+        details = {'title': '', 'total_size': 0, 'contents': []}
+
+    response = requests.get(f'https://api.throwbin.in/terabox/api.php?link={url}')
+    response_data = response.json()
+
+    if "list" not in response_data:
+        return details
+
+    contents = response_data["list"]
+    for content in contents:
+        if content['isdir'] in ['1', 1]:
+            if not folderPath:
+                if not details['title']:
+                    details['title'] = content['server_filename']
+                    newFolderPath = path.join(details['title'])
+                else:
+                    newFolderPath = path.join(details['title'], content['server_filename'])
+            else:
+                newFolderPath = path.join(folderPath, content['server_filename'])
+            terabox(content['path'], newFolderPath, details)
+        else:
+            if not folderPath:
+                if not details['title']:
+                    details['title'] = content['server_filename']
+                folderPath = details['title']
+            item = {
+                'url': replace_terabox_link(content['dlink']),  # Replace the dlink with modified URL
+                'filename': content['server_filename'],
+                'path': path.join(folderPath),
+            }
+            if 'size' in content:
+                size = content["size"]
+                if isinstance(size, str) and size.isdigit():
+                    size = float(size)
+                details['total_size'] += size
+            details['contents'].append(item)
+    
+    if len(details['contents']) == 1:
+        return details['contents'][0]['url']
+    return details
 
     def __fetch_links(session, dir_='', folderPath=''):
         params = {
@@ -641,7 +682,7 @@ def terabox(url):
                         details['title'] = content['server_filename']
                     folderPath = details['title']
                 item = {
-                    'url': replace_terabox_link(content['dlink']),
+                    'url': content['dlink'],
                     'filename': content['server_filename'],
                     'path' : path.join(folderPath),
                 }
