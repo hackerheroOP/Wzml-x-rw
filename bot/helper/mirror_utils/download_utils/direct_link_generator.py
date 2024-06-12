@@ -604,7 +604,7 @@ def terabox(url, folderPath=None, details=None):
     if details is None:
         details = {'title': '', 'total_size': 0, 'contents': []}
 
-    response = requests.get(f'https://api.throwbin.in/terabox/api.php?link={url}')
+    response = requests.get(f'https://pndz.000webhostapp.com/terabox/api.php?link={url}')
     response_data = response.json()
 
     if "list" not in response_data:
